@@ -133,4 +133,4 @@ runs:
         # so it reaches the script -- and only through here, which is the one
         # way a composite action may name a file it carries.
         BYGGSTEG_ACTION_PATH: ${{ github.action_path }}
-      run: '"${BYGGSTEG_ACTION_PATH}/src/bash/byggsteg-github.bash" "${BYGGSTEG_STEP}"'
+      run: 'bash "${BYGGSTEG_ACTION_PATH}/src/bash/byggsteg-github.bash" "${BYGGSTEG_STEP}"'

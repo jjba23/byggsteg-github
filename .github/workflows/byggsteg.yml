@@ -173,14 +173,14 @@ jobs:
       - name: 🔒 Get token @ Byggsteg
         id: token
         shell: bash
-        run: '"${GITHUB_WORKSPACE}/.byggsteg/src/bash/byggsteg-github.bash" get-token'
+        run: 'bash "${GITHUB_WORKSPACE}/.byggsteg/src/bash/byggsteg-github.bash" get-token'
 
       - name: 💼 Submit job @ Byggsteg
         id: submit
         shell: bash
-        run: '"${GITHUB_WORKSPACE}/.byggsteg/src/bash/byggsteg-github.bash" submit-job'
+        run: 'bash "${GITHUB_WORKSPACE}/.byggsteg/src/bash/byggsteg-github.bash" submit-job'
 
       - name: 🔄 Poll job status @ Byggsteg
         id: poll
         shell: bash
-        run: '"${GITHUB_WORKSPACE}/.byggsteg/src/bash/byggsteg-github.bash" poll-job'
+        run: 'bash "${GITHUB_WORKSPACE}/.byggsteg/src/bash/byggsteg-github.bash" poll-job'
