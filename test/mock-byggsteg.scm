@@ -2,26 +2,19 @@
 !#
 ;;; byggsteg-github
 
-;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
+;; SPDX-License-Identifier: MIT
+;; Copyright © 2026 Josep Bigorra <jjbigorra@gmail.com>
 
-;; Vendored from byggsteg-woodpecker's test/mock-byggsteg.scm, unchanged.
-;; Both bridges speak the same API, and both suites should describe it the
-;; same way; when the API grows a shape, it grows in both copies.  It is here
-;; rather than fetched so that this project's tests need nothing but the
-;; checkouts they are already made of.
+;; The licence's own text -- the permission notice and the disclaimer -- is in
+;; LICENSE, which travels with every copy of this software.
 
-;; byggsteg-woodpecker is free software: you can redistribute it and/or modify
-;; it under the terms of the Lesser GNU General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
-
-;; byggsteg-woodpecker is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; Lesser GNU General Public License for more details.
-
-;; You should have received a copy of the Lesser GNU General Public License
-;; along with byggsteg-woodpecker.  If not, see <https://www.gnu.org/licenses/>.
+;; Vendored from byggsteg-woodpecker's test/mock-byggsteg.scm.  The code is the
+;; same; the licence header above is not, because that project ships under the
+;; Lesser GNU General Public License v3 or newer and this copy ships under
+;; byggsteg-github's MIT.  Both bridges speak the same API, and both suites
+;; should describe it the same way; when the API grows a shape, it grows in
+;; both copies.  It is here rather than fetched so that this project's tests
+;; need nothing but the checkouts they are already made of.
 
 ;; A tiny mock of the Byggsteg JSON API (version 2), used by
 ;; test/run-tests.bash.

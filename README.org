@@ -6,7 +6,7 @@
 #+options: toc:nil num:nil
 #+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://jointhefreeworld.org/static/css/jointhefreeworld.css" />
 
-[[https://jointhefreeworld.org/ggg/dist/shell-bash.svg]] [[https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]] [[https://img.shields.io/badge/CI-GitHub%20%7C%20Byggsteg-2ea44f.svg]]
+[[https://jointhefreeworld.org/ggg/dist/shell-bash.svg]] [[https://img.shields.io/badge/license-MIT-blue.svg]] [[https://img.shields.io/badge/CI-GitHub%20%7C%20Byggsteg-2ea44f.svg]]
 
 /one reusable workflow, one action, and the same bridge underneath/
 
@@ -299,13 +299,21 @@ all of it.
 
 * Licence
 
-byggsteg-github and all of its source code are free software, licensed under
-the Lesser GNU General Public License v3 (or newer at your convenience).
+byggsteg-github and all of its source code are free software, released under
+the MIT licence: use it, copy it, change it, ship it, commercially or not.
 
-https://www.gnu.org/licenses/lgpl-3.0.html
+https://opensource.org/license/mit
 
-The documentation and examples, including this document, which are provided
-with byggsteg-github, are all licensed under the GNU Free Documentation
-License v1.3 (or newer at your convenience).
+The licence is short but it is not nothing -- the permission notice and the
+disclaimer are what it says, and both are in [[./LICENSE][LICENSE]], which
+belongs with every copy of this software.  Every source file states the same
+thing in two lines of its own header, in the machine-readable
+=SPDX-License-Identifier: MIT= form.
 
-https://www.gnu.org/licenses/fdl-1.3.html
+The documentation and examples, this document included, are under that same
+licence rather than a separate one for prose.
+
+One file is the exception and says so in its header: test/mock-byggsteg.scm is
+vendored from [[https://codeberg.org/jjba23/byggsteg-woodpecker][byggsteg-woodpecker]],
+which is licensed under the Lesser GNU General Public License v3 (or newer).
+The copy here is MIT, like the rest of this project.
