@@ -1,0 +1,311 @@
+#+title: Byggsteg GitHub
+#+subtitle: bridge GitHub Actions to Byggsteg pipelines
+#+author: Josep Bigorra
+#+email: jjbigorra@gmail.com
+#+language: en
+#+options: toc:nil num:nil
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://jointhefreeworld.org/static/css/jointhefreeworld.css" />
+
+[[https://jointhefreeworld.org/ggg/dist/shell-bash.svg]] [[https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]] [[https://img.shields.io/badge/CI-GitHub%20%7C%20Byggsteg-2ea44f.svg]]
+
+/one reusable workflow, one action, and the same bridge underneath/
+
+Run [[https://codeberg.org/jjba23/byggsteg][Byggsteg]] jobs from [[https://docs.github.com/en/actions][GitHub Actions]]. A repository calls one shared workflow and
+gets a pipeline that signs in to Byggsteg, hands it a job, and follows that
+job's log to a green or a red build -- or, when it has steps of its own to run
+first, it uses the action in as many steps as it likes.
+
+- 📖 *Byggsteg:* [[https://codeberg.org/jjba23/byggsteg][codeberg.org/jjba23/byggsteg]]
+- 💾 *Read the source (and send issues/patches):* [[https://github.com/jjba23/byggsteg-github][github.com/jjba23/byggsteg-github]]
+- 🪵 *The Woodpecker bridge (this project's sibling):* [[https://codeberg.org/jjba23/byggsteg-woodpecker][codeberg.org/jjba23/byggsteg-woodpecker]]
+- 🐳 *The image both of them run:* [[https://hub.docker.com/repository/docker/jjba23/byggsteg-woodpecker][hub.docker.com/r/jjba23/byggsteg-woodpecker]]
+
+#+TOC: headlines 1
+
+------------------
+
+* What this is
+
+Woodpecker turned a step's ~settings~ into ~PLUGIN_~-prefixed environment
+variables, which is how [[https://codeberg.org/jjba23/byggsteg-woodpecker][byggsteg-woodpecker]]'s image could be dropped into
+a pipeline and pointed at a deployment. GitHub Actions has no such convention:
+a workflow passes an action its ~inputs~, and a shell script reads the
+environment. So the missing piece is not the bridge -- that is the same image,
+unchanged -- but the piece that *drives* it, and that is what this project is.
+
+Byggsteg speaks the same ~/api/v2~ as ever, and the job is still described in
+Lisp; nothing about the deployment changes. What changes is only how a build
+gets there.
+
+* Two ways in, one script
+
+GitHub has two ways to share pipeline work, and this project has one of each.
+Both drive =src/bash/byggsteg-github.bash=, which resolves the settings, writes
+the job code, and runs one step of the bridge -- either in the image, the way
+a runner does it, or directly, when a machine has the script and no container
+runtime.
+
+** The shared workflow: ~.github/workflows/byggsteg.yml~
+
+A [[https://docs.github.com/en/actions/reference/workflows-and-actions/reusable-workflows][reusable workflow]] is the only way GitHub lets one repository offer another a
+whole job. A caller names it with ~uses:~ and passes it ~with:~ and ~secrets:~,
+and gets the three steps -- sign in, submit the job, follow the log -- each in
+its own step so a red build points at the thing that failed. This is what a
+repository wants when its pipeline *is* the Byggsteg job.
+
+** The action: ~action.yml~
+
+A [[https://docs.github.com/en/actions/reference/workflows-and-actions/creating-a-composite-action][composite action]] is a step, not a job, so a repository that has its own
+steps -- a build here, a lint there -- puts =jjba23/byggsteg-github@...= where
+it wants the deployment involved.
+
+They take the same request: the workflow's ~with:~ inputs and the action's
+~inputs~ are the same settings, checked to be the same by the test suite, so
+which door a repository comes in by does not change what happens.
+
+* Example usage
+
+** The smallest pipeline, with the shared workflow
+
+#+begin_src yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  byggsteg:
+    uses: jjba23/byggsteg-github/.github/workflows/byggsteg.yml@trunk
+    with:
+      tasks: maak-test maak-deploy
+      daemon-name: my-daemon
+    secrets: inherit
+#+end_src
+
+That is the whole pipeline. ~secrets: inherit~ hands the called workflow the
+repository's own secrets, so a repository that already holds ~BYGGSTEG_EMAIL~
+and ~BYGGSTEG_PASSWORD~ for another pipeline writes nothing here; naming them
+one by one instead is the same thing, spelled out:
+
+#+begin_src yaml
+    secrets:
+      BYGGSTEG_EMAIL: ${{ secrets.BYGGSTEG_EMAIL }}
+      BYGGSTEG_PASSWORD: ${{ secrets.BYGGSTEG_PASSWORD }}
+#+end_src
+
+@trunk runs the bridge as trunk has it. Pin a tag (~@v1~) to run the bridge as
+the tag has it, which is what a repository that would rather review an upgrade
+should do. Either way the bridge script checked out is the script *at the
+commit the caller pinned*: the workflow checks out its own repository at
+~job.workflow_sha~, so what a caller asked for is what runs.
+
+The workflow takes two more inputs that are about where the job runs rather
+than what it does -- ~runs-on~ (a runner label, ~ubuntu-latest~) and
+~timeout-minutes~ (a ceiling on the waiting, 60) -- because a job that calls a
+reusable workflow is not allowed to set those itself.
+
+** A pipeline with steps of its own
+
+#+begin_src yaml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: make test
+
+  byggsteg:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🧱 Byggsteg
+        uses: jjba23/byggsteg-github@trunk
+        with:
+          tasks: pull-and-restart maak-deploy
+          daemon-name: my-daemon
+          email: ${{ secrets.BYGGSTEG_EMAIL }}
+          password: ${{ secrets.BYGGSTEG_PASSWORD }}
+#+end_src
+
+The action runs the three steps of the bridge inside the one step, in the
+order they belong in (that is ~step: all~, the default). ~step: get-token~,
+~step: submit-job~ and ~step: poll-job~ run them one at a time instead, sharing
+their token and log id through a directory under the runner's temporary
+directory.
+
+* What it works out from the GitHub context
+
+Three questions have an answer in a GitHub run and a different answer in a
+Byggsteg job, and the script answers them so a workflow does not have to:
+
+|------------------+--------------------------------------------------------------------------|
+| *Setting*        | *What it is when nothing says otherwise*                                   |
+|------------------+--------------------------------------------------------------------------|
+| ~project~        | the repository's name (~jjba23/lucidplan~ gives ~lucidplan~)                |
+| ~branch-name~    | ~GITHUB_HEAD_REF~ for a pull request, ~GITHUB_REF_NAME~ otherwise           |
+| ~clone-url~      | ~<GITHUB_SERVER_URL>/<GITHUB_REPOSITORY>.git~                                |
+|------------------+--------------------------------------------------------------------------|
+
+A repository whose Byggsteg project is named after the directory rather than
+the repository, or that clones over SSH, sets those inputs and the context
+stops being asked.
+
+A ~job-code~ given as a whole Lisp thunk is sent as written, and may name the
+context with ~%%NAME%%~ placeholders, which the bridge resolves from the
+environment of the step: every ~GITHUB_*~ variable is there, and so are
+~BYGGSTEG_PROJECT~, ~BYGGSTEG_BRANCH~ and ~BYGGSTEG_CLONE_URL~ -- this
+project's answers to the three questions above. That is what makes a job code
+portable between the two CI systems:
+
+#+begin_src yaml
+          job-code: |
+            (lambda()
+              `((task . ("maak-test" "maak-deploy"))
+                (daemon-name . "my-daemon")
+                (project . "%%BYGGSTEG_PROJECT%%")
+                (branch-name . "%%BYGGSTEG_BRANCH%%")
+                (clone-url . "%%BYGGSTEG_CLONE_URL%%")))
+#+end_src
+
+* Settings reference
+
+|--------------------------+----------------------------------------------------------------------|
+| *Input*                  | *What it is*                                                          |
+|--------------------------+----------------------------------------------------------------------|
+| ~url~                    | Base URL of the deployment (~https://byggsteg.jointhefreeworld.org~)   |
+| ~tasks~                  | Tasks to run, space-separated. Required unless ~job-code~ is given.    |
+| ~daemon-name~            | The daemon the job is for, when the deployment has more than one.      |
+| ~job-code~               | A whole Lisp job definition, instead of ~tasks~.                        |
+| ~project~                | The project the run belongs to.                                        |
+| ~branch-name~            | The branch the run is about.                                           |
+| ~clone-url~              | Where the daemon clones the source from.                               |
+| ~poll-limit~             | Status polls before giving up (4096).                                  |
+| ~poll-interval-seconds~  | Seconds between status polls (8).                                      |
+| ~poll-view~              | ~rendered~ (default) or ~raw~.                                          |
+| ~debug~                  | Log every request and every answer.                                    |
+| ~image~                  | The step image (~jjba23/byggsteg-woodpecker:v0.3.0~).                   |
+| ~runtime~                | ~auto~ (docker, else podman), ~docker~, ~podman~ or ~script~.           |
+| ~workspace~              | The directory the steps share (~$RUNNER_TEMP/byggsteg~).                |
+|--------------------------+----------------------------------------------------------------------|
+
+The action takes ~email~ and ~password~ as inputs, because a workflow written
+by hand names its secrets there; the shared workflow takes them as
+~BYGGSTEG_EMAIL~ and ~BYGGSTEG_PASSWORD~ secrets instead. The action also takes
+two a called workflow cannot use: ~step~ (which step of the bridge to run) and
+~bridge-script~ (the bridge script, when ~runtime~ is ~script~).
+
+The image's own tuning -- ~BYGGSTEG_DEBUG~, ~BYGGSTEG_RETRY_ATTEMPTS~,
+~BYGGSTEG_RETRY_INTERVAL~, ~BYGGSTEG_CONNECT_TIMEOUT~ and
+~BYGGSTEG_REQUEST_TIMEOUT~ -- is passed through when a workflow sets it in the
+job's environment.
+
+* The job code it writes from the tasks
+
+~tasks~ is the common case, so the thunk is written here rather than carried in
+YAML:
+
+#+begin_src scheme
+(lambda()
+  `((task . ("maak-test" "maak-deploy"))
+    (daemon-name . "my-daemon")
+    (project . "lucidplan")
+    (branch-name . "trunk")
+    (clone-url . "https://github.com/jjba23/lucidplan.git")))
+#+end_src
+
+A field whose value is not known is left out rather than sent empty: a thunk
+that names no branch asks for the project's own default, which is what a
+person writing one by hand would have relied on.
+
+A task name with a quote, a backslash or a newline in it is refused, with the
+setting named, before anything is sent: such a value would end the Lisp string
+early and turn a job definition into a syntax error somewhere the reader
+cannot see.
+
+* Runtimes, and who the steps run as
+
+~auto~ is the default: docker when the machine has it -- which is what
+GitHub-hosted runners have, and what GitHub itself runs a job's own container
+steps in -- and podman otherwise. ~script~ runs the bridge script directly for
+a machine that has the script and no container runtime at all, which is also
+how the test suite runs the checks that need no image.
+
+The steps get the workspace mounted and run as the user that owns it, so the
+files they leave behind belong to the runner and the steps after them can read
+and remove them. That is asked for differently by the two runtimes: a docker
+daemon runs as root and takes a numeric user, while a rootless podman maps a
+number into its subordinate range, where it owns nothing -- so podman is asked
+for ~--userns=keep-id~ instead. A self-hosted runner with rootless podman is
+the reason that branch exists; a GitHub-hosted runner takes the other one.
+
+* Secrets, permissions, and what a job can reach
+
+- secret values reach the bridge through the environment and are never built
+  into a command line, so a CI log or =ps= on the runner shows a name and not a
+  value;
+- each step is handed the settings it needs and no others: the sign-in password
+  is not in a container that is only following a log;
+- the shared workflow asks for ~contents: read~ and nothing else. The bridge
+  reads the repository it is told to build and is handed no token to push or
+  publish with.
+
+* Tests
+
+#+begin_src sh
+bash test/run-tests.bash
+#+end_src
+
+The suite is in two parts, because there are two questions to answer.
+
+- *What does this project hand the bridge?* The runner is run with a stand-in
+  bridge (=test/fake-bridge.bash=) that writes down every setting and every
+  name it was handed, so the settings, the job code written from the tasks, the
+  addresses worked out from the GitHub context and every refusal can be read as
+  a fact rather than guessed at from a log. The wiring is checked here too:
+  the action and the reusable workflow are read as files and compared with each
+  other and with what the script reads, so an input that is declared and never
+  handed over -- or handed over under a name nothing reads -- fails the suite
+  rather than a caller's pipeline.
+- *Does the whole bridge work when it is driven this way?* The runner is then
+  run for real -- the image, and a mock deployment
+  (=test/mock-byggsteg.scm=) -- so a green build is green because the
+  deployment said the job succeeded, which is the thing this project exists to
+  make true. A job that fails fails the build, a job's output arrives in the
+  build log, and a password the deployment refuses is not retried eight times.
+
+That second part needs a container runtime, guile and the step image, and says
+so rather than failing when a machine has none of them. It also needs the
+container to be able to reach the mock deployment, which is on the host: the
+addresses this machine can be reached at are tried until one answers, since
+whether that is ~host.containers.internal~, ~172.17.0.1~ or an address of its
+own depends on the runtime.
+
+The same three checks run on every push in [[./.github/workflows/tests.yml][tests.yml]], on a runner that has
+all of it.
+
+* What this is not
+
+- *not the Woodpecker bridge.* [[https://codeberg.org/jjba23/byggsteg-woodpecker][byggsteg-woodpecker]] stays what it is, for
+  Woodpecker pipelines, and its image is what this project runs. A repository
+  that moves between the two moves its pipeline, not its deployment.
+- *not a deployment tool.* The job is Byggsteg's to run, exactly as before.
+  This project knows how to ask for one and how to read the answer.
+- *not (yet) for GitHub Enterprise Server.* Checking out its own repository at
+  the called workflow's commit uses ~job.workflow_sha~ and
+  ~job.workflow_repository~, which are documented as unavailable there.
+
+------------------
+
+* Licence
+
+byggsteg-github and all of its source code are free software, licensed under
+the Lesser GNU General Public License v3 (or newer at your convenience).
+
+https://www.gnu.org/licenses/lgpl-3.0.html
+
+The documentation and examples, including this document, which are provided
+with byggsteg-github, are all licensed under the GNU Free Documentation
+License v1.3 (or newer at your convenience).
+
+https://www.gnu.org/licenses/fdl-1.3.html

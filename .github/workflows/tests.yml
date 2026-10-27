@@ -1,0 +1,56 @@
+# byggsteg-github
+
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+# byggsteg-github is free software: you can redistribute it and/or modify
+# it under the terms of the Lesser GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# byggsteg-github is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Lesser GNU General Public License for more details.
+
+# You should have received a copy of the Lesser GNU General Public License
+# along with byggsteg-github.  If not, see <https://www.gnu.org/licenses/>.
+
+# This project's own pipeline: the suite, on a machine that has what the suite
+# needs.  Guile is what test/mock-byggsteg.scm is written in, and what reads
+# the job code the runner writes; docker is the runtime the steps run in, and
+# is also the runtime GitHub-hosted runners come with; the image is pulled
+# first so that the part of the suite that drives the whole bridge runs here
+# rather than skipping itself.
+
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: 🧪 The suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: ⬇️ Check out
+        uses: actions/checkout@v6
+
+      - name: 🌱 Get guile
+        run: sudo apt-get update && sudo apt-get install --yes guile-3.0
+
+      - name: 🐚 Shellcheck
+        run: |
+          shellcheck --version
+          shellcheck -x src/bash/byggsteg-github.bash test/run-tests.bash test/fake-bridge.bash
+
+      - name: 🐳 Pull the step image
+        run: docker pull docker.io/jjba23/byggsteg-woodpecker:v0.3.0
+
+      - name: 🧪 Run the suite
+        run: bash test/run-tests.bash

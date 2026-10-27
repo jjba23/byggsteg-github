@@ -1,0 +1,195 @@
+# byggsteg-github
+
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+# byggsteg-github is free software: you can redistribute it and/or modify
+# it under the terms of the Lesser GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# byggsteg-github is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Lesser GNU General Public License for more details.
+
+# You should have received a copy of the Lesser GNU General Public License
+# along with byggsteg-github.  If not, see <https://www.gnu.org/licenses/>.
+
+# The workflow a repository calls: it signs in to a Byggsteg deployment, hands
+# it a job and follows that job's log to a green or a red build, which is the
+# whole of a pipeline that has no steps of its own.
+#
+#   jobs:
+#     byggsteg:
+#       uses: jjba23/byggsteg-github/.github/workflows/byggsteg.yml@v1
+#       with:
+#         tasks: maak-test maak-deploy
+#         daemon-name: my-daemon
+#       secrets: inherit
+#
+# The three steps are byggsteg-woodpecker's three -- get the token, submit the
+# job, follow the log -- and are kept apart for the same reason they are kept
+# apart there: a red build should point at the thing that failed.  They share
+# the settings through the job's own environment, so nothing is written twice.
+#
+# The bridge itself is checked out from this repository, at the very commit
+# this workflow was called at (`job.workflow_sha'): the script a caller runs is
+# then the script of the ref the caller pinned, without a tag inside a workflow
+# that could be left behind by the next release.
+
+name: byggsteg
+
+on:
+  workflow_call:
+    inputs:
+      url:
+        description: Base URL of the Byggsteg deployment.
+        type: string
+        required: false
+        default: https://byggsteg.jointhefreeworld.org
+      tasks:
+        description: Tasks for the deployment to run, space-separated. Required unless job-code is given.
+        type: string
+        required: false
+        default: ""
+      daemon-name:
+        description: Name of the daemon the job is for, when the deployment has more than one.
+        type: string
+        required: false
+        default: ""
+      job-code:
+        description: A whole Lisp job definition, sent as written instead of tasks. It may use %%NAME%% placeholders.
+        type: string
+        required: false
+        default: ""
+      project:
+        description: The project the run belongs to. Defaults to the repository's name.
+        type: string
+        required: false
+        default: ""
+      branch-name:
+        description: The branch the run is about. Defaults to the branch the run is on.
+        type: string
+        required: false
+        default: ""
+      clone-url:
+        description: Where the daemon clones the source from. Defaults to the repository over HTTPS.
+        type: string
+        required: false
+        default: ""
+      poll-limit:
+        description: Status polls before giving up, when following a job.
+        type: string
+        required: false
+        default: ""
+      poll-interval-seconds:
+        description: Seconds between status polls, when following a job.
+        type: string
+        required: false
+        default: ""
+      poll-view:
+        description: How the job's output is read - rendered (the default) or raw.
+        type: string
+        required: false
+        default: ""
+      debug:
+        description: Whether to log every request the bridge makes and every answer it gets.
+        type: boolean
+        required: false
+        default: false
+      image:
+        description: The step image the bridge runs in.
+        type: string
+        required: false
+        default: docker.io/jjba23/byggsteg-woodpecker:v0.3.0
+      runtime:
+        description: Container runtime - auto (docker, else podman), docker or podman.
+        type: string
+        required: false
+        default: auto
+      workspace:
+        description: The directory the bridge's steps share. Defaults to one under the runner's temporary directory.
+        type: string
+        required: false
+        default: ""
+      runs-on:
+        description: The runner label the job is placed on.
+        type: string
+        required: false
+        default: ubuntu-latest
+      timeout-minutes:
+        description: How long the job may take, the waiting for Byggsteg included.
+        type: number
+        required: false
+        default: 60
+    secrets:
+      # A caller may name these, or hand over the repository's whole store of
+      # secrets with `secrets: inherit' -- which is what the example above
+      # does, and why a repository that already holds them for another
+      # pipeline needs to write nothing at all.
+      BYGGSTEG_EMAIL:
+        description: Email of the Byggsteg account.
+        required: true
+      BYGGSTEG_PASSWORD:
+        description: Password of that account.
+        required: true
+    outputs:
+      log-id:
+        description: The id of the log the queued run writes its output to.
+        value: ${{ jobs.byggsteg.outputs.log-id }}
+
+# The bridge reads the repository it is told to build; it does not read this
+# one, and it is handed no token of ours to push or to publish with.
+permissions:
+  contents: read
+
+jobs:
+  byggsteg:
+    name: 🧱 Byggsteg
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    env:
+      BYGGSTEG_URL: ${{ inputs.url }}
+      BYGGSTEG_EMAIL: ${{ secrets.BYGGSTEG_EMAIL }}
+      BYGGSTEG_PASSWORD: ${{ secrets.BYGGSTEG_PASSWORD }}
+      BYGGSTEG_TASKS: ${{ inputs.tasks }}
+      BYGGSTEG_DAEMON_NAME: ${{ inputs.daemon-name }}
+      BYGGSTEG_JOB_CODE: ${{ inputs.job-code }}
+      BYGGSTEG_PROJECT: ${{ inputs.project }}
+      BYGGSTEG_BRANCH: ${{ inputs.branch-name }}
+      BYGGSTEG_CLONE_URL: ${{ inputs.clone-url }}
+      BYGGSTEG_POLL_LIMIT: ${{ inputs.poll-limit }}
+      BYGGSTEG_POLL_INTERVAL_SECONDS: ${{ inputs.poll-interval-seconds }}
+      BYGGSTEG_POLL_VIEW: ${{ inputs.poll-view }}
+      BYGGSTEG_DEBUG: ${{ inputs.debug }}
+      BYGGSTEG_IMAGE: ${{ inputs.image }}
+      BYGGSTEG_RUNTIME: ${{ inputs.runtime }}
+      BYGGSTEG_WORKSPACE: ${{ inputs.workspace }}
+    outputs:
+      log-id: ${{ steps.submit.outputs.log-id }}
+    steps:
+      # The bridge, at the commit this workflow was called at. A repository
+      # that called `@main' gets main's script, and one that called a tag gets
+      # that tag's: what a caller pinned is what runs.
+      - name: 🧱 Get the bridge
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .byggsteg
+          persist-credentials: false
+
+      - name: 🔒 Get token @ Byggsteg
+        id: token
+        shell: bash
+        run: '"${GITHUB_WORKSPACE}/.byggsteg/src/bash/byggsteg-github.bash" get-token'
+
+      - name: 💼 Submit job @ Byggsteg
+        id: submit
+        shell: bash
+        run: '"${GITHUB_WORKSPACE}/.byggsteg/src/bash/byggsteg-github.bash" submit-job'
+
+      - name: 🔄 Poll job status @ Byggsteg
+        id: poll
+        shell: bash
+        run: '"${GITHUB_WORKSPACE}/.byggsteg/src/bash/byggsteg-github.bash" poll-job'

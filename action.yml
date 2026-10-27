@@ -1,0 +1,145 @@
+# byggsteg-github
+
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+# byggsteg-github is free software: you can redistribute it and/or modify
+# it under the terms of the Lesser GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# byggsteg-github is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Lesser GNU General Public License for more details.
+
+# You should have received a copy of the Lesser GNU General Public License
+# along with byggsteg-github.  If not, see <https://www.gnu.org/licenses/>.
+
+# The action: one step that runs a Byggsteg job and follows it to a green or a
+# red build.  All of it is in src/bash/byggsteg-github.bash -- the action's
+# inputs are handed to that script as the settings it reads, and nothing else
+# happens here.  A repository that would rather write its own workflow can use
+# this action directly; a repository that wants the smallest possible pipeline
+# calls the reusable workflow in .github/workflows/byggsteg.yml instead, which
+# drives the same script.
+
+name: Byggsteg
+description: Hand a job to a Byggsteg deployment and follow its log to a green or a red build
+author: jjba23
+
+branding:
+  icon: package
+  color: green
+
+inputs:
+  url:
+    description: Base URL of the Byggsteg deployment.
+    required: false
+    default: https://byggsteg.jointhefreeworld.org
+  email:
+    description: Email of the Byggsteg account. Pass it from a secret.
+    required: true
+  password:
+    description: Password of that account. Pass it from a secret.
+    required: true
+  tasks:
+    description: Tasks for the deployment to run, space-separated. Required unless job-code is given.
+    required: false
+    default: ""
+  daemon-name:
+    description: Name of the daemon the job is for, when the deployment has more than one.
+    required: false
+    default: ""
+  job-code:
+    description: A whole Lisp job definition, sent as written instead of tasks. It may use %%NAME%% placeholders.
+    required: false
+    default: ""
+  project:
+    description: The project the run belongs to. Defaults to the repository's name.
+    required: false
+    default: ""
+  branch-name:
+    description: The branch the run is about. Defaults to the branch the run is on.
+    required: false
+    default: ""
+  clone-url:
+    description: Where the daemon clones the source from. Defaults to the repository over HTTPS.
+    required: false
+    default: ""
+  step:
+    description: Which step of the bridge to run - all (the default), get-token, submit-job or poll-job.
+    required: false
+    default: all
+  poll-limit:
+    description: Status polls before giving up, when following a job.
+    required: false
+    default: ""
+  poll-interval-seconds:
+    description: Seconds between status polls, when following a job.
+    required: false
+    default: ""
+  poll-view:
+    description: How the job's output is read - rendered (the default) or raw.
+    required: false
+    default: ""
+  debug:
+    description: Set it to true to log every request the bridge makes and every answer it gets.
+    required: false
+    default: "false"
+  image:
+    description: The step image the bridge runs in.
+    required: false
+    default: docker.io/jjba23/byggsteg-woodpecker:v0.3.0
+  runtime:
+    description: Container runtime - auto (docker, else podman), docker, podman or script.
+    required: false
+    default: auto
+  bridge-script:
+    description: The bridge script, when runtime is script.
+    required: false
+    default: ""
+  workspace:
+    description: The directory the bridge's steps share. Defaults to one under the runner's temporary directory.
+    required: false
+    default: ""
+
+outputs:
+  log-id:
+    description: The id of the log the queued run writes its output to.
+    value: ${{ steps.byggsteg.outputs.log-id }}
+
+runs:
+  using: composite
+  steps:
+    - name: 🧱 Byggsteg
+      id: byggsteg
+      shell: bash
+      env:
+        # The inputs, under the names the script reads. They are passed through
+        # the environment rather than built into the command line, so a secret
+        # is never part of a command a CI log or `ps' would show -- and so that
+        # no input is ever interpolated *into* the command, where a value with
+        # a quote in it would be shell rather than a value.
+        BYGGSTEG_STEP: ${{ inputs.step }}
+        BYGGSTEG_URL: ${{ inputs.url }}
+        BYGGSTEG_EMAIL: ${{ inputs.email }}
+        BYGGSTEG_PASSWORD: ${{ inputs.password }}
+        BYGGSTEG_TASKS: ${{ inputs.tasks }}
+        BYGGSTEG_DAEMON_NAME: ${{ inputs.daemon-name }}
+        BYGGSTEG_JOB_CODE: ${{ inputs.job-code }}
+        BYGGSTEG_PROJECT: ${{ inputs.project }}
+        BYGGSTEG_BRANCH: ${{ inputs.branch-name }}
+        BYGGSTEG_CLONE_URL: ${{ inputs.clone-url }}
+        BYGGSTEG_POLL_LIMIT: ${{ inputs.poll-limit }}
+        BYGGSTEG_POLL_INTERVAL_SECONDS: ${{ inputs.poll-interval-seconds }}
+        BYGGSTEG_POLL_VIEW: ${{ inputs.poll-view }}
+        BYGGSTEG_DEBUG: ${{ inputs.debug }}
+        BYGGSTEG_IMAGE: ${{ inputs.image }}
+        BYGGSTEG_RUNTIME: ${{ inputs.runtime }}
+        BYGGSTEG_BRIDGE_SCRIPT: ${{ inputs.bridge-script }}
+        BYGGSTEG_WORKSPACE: ${{ inputs.workspace }}
+        # `github.action_path' is a context and not an environment variable,
+        # so it reaches the script -- and only through here, which is the one
+        # way a composite action may name a file it carries.
+        BYGGSTEG_ACTION_PATH: ${{ github.action_path }}
+      run: '"${BYGGSTEG_ACTION_PATH}/src/bash/byggsteg-github.bash" "${BYGGSTEG_STEP}"'
