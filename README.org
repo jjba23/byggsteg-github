@@ -8,6 +8,9 @@
 
 [[https://jointhefreeworld.org/ggg/dist/shell-bash.svg]] [[https://img.shields.io/badge/license-MIT-blue.svg]] [[https://img.shields.io/badge/CI-GitHub%20%7C%20Byggsteg-2ea44f.svg]]
 
+#+attr_html: :width 160 :alt Byggsteg GitHub logo
+[[file:logo.svg]]
+
 /one reusable workflow, one action, and the same bridge underneath/
 
 Run [[https://codeberg.org/jjba23/byggsteg][Byggsteg]] jobs from [[https://docs.github.com/en/actions][GitHub Actions]]. A repository calls one shared workflow and
